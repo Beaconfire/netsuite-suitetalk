@@ -11,13 +11,18 @@ Create a new instance of the client. Initializing the client is an asynchronous 
 const netsuite       = require('netsuite-suitetalk');
 const netSuiteClient = new netsuite(
 {
-    accountId : YOURACCOUNTID,
-    appId     : YOURAPPLICATIONID,
-    baseUrl   : YOURBASEURL,     // defaults to production NS - https://webservices.netsuite.com/services/NetSuitePort_2016_2
-    password  : YOURPASSWORD,
-    roleId    : YOURROLEID,
-    username  : YOURUSERNAME,
-    wsdlPath  : YOURWSDLPATH    // defaults to wsdl (v2016_2) - https://webservices.netsuite.com/wsdl/v2016_2_0/netsuite.wsdl
+    accountId      : YOURACCOUNTID,
+    appId          : YOURAPPLICATIONID,
+    baseUrl        : YOURBASEURL,     // defaults to production NS - https://webservices.netsuite.com/services/NetSuitePort_2016_2
+    password       : YOURPASSWORD,
+    roleId         : YOURROLEID,
+    username       : YOURUSERNAME,
+    wsdlPath       : YOURWSDLPATH    // defaults to wsdl (v2016_2) - https://webservices.netsuite.com/wsdl/v2016_2_0/netsuite.wsdl
+    // Use the username / password / accountId above or the token below.  Don't use both
+    consumerKey    : YOURCONSUMERKEY,
+    consumerSecret : YOURCONSUMERSECRET,
+    token          : YOURTOKEN,
+    tokenSecret    : YOURSECRETTOKEN,
 });
 netSuiteClient.initialize((err) =>
 {
@@ -83,5 +88,19 @@ netSuiteClient.update('Customer', '12345', fields, (err, data) =>
     {
         console.log('Update was successful');
     }
+});
+```
+
+### For Token Based Authentication
+
+Be sure to call ```netSuiteClient.signNewTbaRequest()``` before each call.  this will create a new header signature for the request you're going to make.
+
+__Example__
+```
+let cashSale = {}; // cash sale object to create
+
+netSuiteClient.signNewTbaRequest();
+netSuiteClient.client.add(cashSale, function(error,response){
+    // ... do something with the response.
 });
 ```

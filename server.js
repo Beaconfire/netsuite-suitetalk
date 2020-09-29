@@ -90,6 +90,9 @@ NetSuite.prototype.initialize = function(callback)
 
 NetSuite.prototype.get = function(type, internalId, callback)
 {
+    if(!this.username && !this.password)
+        this.signNewTbaRequest();
+
     var self = this;
     let wrappedData =
     {
@@ -181,6 +184,9 @@ NetSuite.prototype.mapSso = function(email, password, account, role, authenticat
 
 NetSuite.prototype.update = function(type, internalId, fields, callback)
 {
+    if(!this.username && !this.password)
+        this.signNewTbaRequest();
+
     var self = this;
     let wrappedData =
     {
