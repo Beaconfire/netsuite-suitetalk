@@ -1,7 +1,10 @@
 'use strict';
 
 const soap = require('soap');
+const crypto = require('crypto');
+const { ulid } = require('ulid');
 var async = require('async');
+
 
 /*
     To update:
@@ -29,42 +32,58 @@ class NetSuite
         this.wsdlPath = options.wsdlPath || 'https://webservices.netsuite.com/wsdl/v2016_2_0/netsuite.wsdl';
         this.nsTarget = options.nstarget || '2016_2';
         this.nsEnvironment = 'production'; //options.nsenvironment || 'production'; // This is not totally working well so just assume prod
+        this.consumerKey = options.consumerKey;
+        this.consumerSecret = options.consumerSecret;
+        this.token = options.token;
+        this.tokenSecret = options.tokenSecret;
+        //this.timestamp = Math.floor(+new Date() / 1000);
     }
 }
 
 NetSuite.prototype.initialize = function(callback)
 {
-    soap.createClient(this.wsdlPath, {}, (err, client) =>
-    {
+    soap.createClient(this.wsdlPath, {}, (err, client) => {
         if (err)
         {
             console.log('Error: ' + err);
             return;
         }
+        this.client = client;
 
-        client.addSoapHeader(
-        {
-            applicationInfo:
-            {
-                applicationId: this.appId
-            },
-            passport:
-            {
-                account: this.accountId,
-                email: this.username,
-                password: this.password,
-                role:
-                {
-                    attributes:
-                    {
-                        internalId: this.roleId
+
+        if(this.username && this.password){
+            let soapHeader = {
+                applicationInfo:{
+                    applicationId: this.appId
+                },
+                passport:{
+                    account: this.accountId,
+                    email: this.username,
+                    password: this.password,
+                    role:{
+                        attributes:{
+                            internalId: this.roleId
+                        }
                     }
                 }
-            }
-        });
+            };
+            this.client.addSoapHeader(soapHeader);
+        }else if(
+            this.consumerKey &&
+            this.consumerSecret &&
+            this.token &&
+            this.tokenSecret
+        ){
+            /*client.addSoapHeader(
+                this.signNewTbaRequest(false, true)
+            );*/
+            this.signNewTbaRequest(false);
+        }else{
+            throw new Error('missing settings username/password or token settings config');
+        }
 
-        client.setEndpoint(this.baseUrl);
-        this.client = client;
+
+        this.client.setEndpoint(this.baseUrl);
         callback();
     });
 };
@@ -215,21 +234,53 @@ function login(settings, callback)
 
         client.setEndpoint(settings.baseUrl);
 
-        var passport =
-        {
-            passport:
-            {
-                account: settings.accountId,
-                email: settings.username,
-                password: settings.password,
-                role:
+        if(settings.username && settings.password){
+            var passport =
                 {
-                    attributes:
-                    {
-                        internalId: settings.roleId
-                    }
+                    passport:
+                        {
+                            account: settings.accountId,
+                            email: settings.username,
+                            password: settings.password,
+                            role:
+                                {
+                                    attributes:
+                                        {
+                                            internalId: settings.roleId
+                                        }
+                                }
+                        }
                 }
-            }
+        }else if(
+            settings.consumerKey &&
+            settings.consumerSecret &&
+            settings.token &&
+            settings.tokenSecret
+        ){
+            const nonce = ulid();
+            const timestamp = Math.floor(+new Date() / 1000);
+            var passport =
+                {
+                    tokenPassport:
+                        {
+                            account: settings.accountId,
+                            consumerKey: settings.consumerKey,
+                            token: settings.token,
+                            nonce: nonce,
+                            timestamp: timestamp,
+                            signature: signRequest(
+                                settings.accountId,
+                                settings.consumerKey,
+                                settings.consumerSecret,
+                                settings.token,
+                                settings.tokenSecret,
+                                nonce,
+                                timestamp
+                            )
+                        }
+                };
+        }else{
+            throw Error('missing settings username/password or settings token config')
         }
 
         client.login(passport, function(err, response)
@@ -237,6 +288,55 @@ function login(settings, callback)
             callback(err, client);
         });
     });
+};
+
+NetSuite.prototype.signNewTbaRequest = function(bReplace, bReturn){
+    if(typeof bReplace === 'undefined')
+        bReplace = true;
+    if(typeof bReturn === 'undefined')
+        bReturn = false;
+    const nonce = ulid();
+    const timestamp = Math.floor(+new Date() / 1000)
+    const soapHeader = {
+        tokenPassport: {
+            account: this.accountId,
+            consumerKey: this.consumerKey,
+            token: this.token,
+            nonce: nonce,
+            timestamp: timestamp,
+            signature: {
+                attributes: {
+                    algorithm: 'HMAC-SHA256'
+                },
+                '$value': signRequest(
+                    this.accountId,
+                    this.consumerKey,
+                    this.consumerSecret,
+                    this.token,
+                    this.tokenSecret,
+                    nonce,
+                    timestamp
+                )
+            }
+        }
+    };
+
+    if(bReturn){
+        return soapHeader;
+    }else{
+        if(bReplace){
+            this.client.changeSoapHeader(0, soapHeader);
+        }else{
+            this.client.addSoapHeader(soapHeader);
+        }
+    }
+
+}
+
+function signRequest(accountId, consumerKey, secretKey, token, tokenSecret, nonce, timestamp){
+    var baseString =  accountId+'&'+consumerKey+'&'+token+'&'+nonce+'&'+timestamp;
+    var key = secretKey+'&'+tokenSecret;
+    return crypto.createHmac('SHA256', key).update(baseString).digest('base64');
 };
 
 module.exports = NetSuite;
